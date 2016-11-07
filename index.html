@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+
+svg {
+  font: 10px sans-serif;
+}
+
+.caption {
+  font-weight: bold;
+}
+
+.key path {
+  display: none;
+}
+
+.key line {
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.state-border {
+  fill: none;
+  stroke: #000;
+}
+
+.county-border {
+  fill: none;
+  stroke: #000;
+  stroke-opacity: 0.3;
+}
+
+.tract {
+  stroke: #000;
+}
+
+</style>
+</head>
+<body style="width:960px">
+<div style="text-align:center"><h1>Kentucky Population Density, 2016</h1></div>
+<script src="https://d3js.org/d3.v3.min.js"></script>
+<script src="https://d3js.org/topojson.v1.min.js"></script>
+<script>
+
+var color = d3.scale.threshold()
+    .domain([1, 10, 50, 100, 500, 1000, 2000, 5000])
+    .range(["#fff7ec", "#fee8c8", "#fdd49e", "#fdbb84", "#fc8d59", "#ef6548", "#d7301f", "#b30000", "#7f0000"]);
+	
+var contrast_color = d3.scale.threshold()
+    .domain([1, 10, 20, 50, 100, 200, 500, 1000])
+    .range(["#fff7ec", "#fee8c8", "#fdd49e", "#fdbb84", "#fc8d59", "#ef6548", "#d7301f", "#b30000", "#7f0000"]);
+	
+var width = 960,
+    height = 540;
+
+var formatNumber = d3.format(",d");
+
+var path = d3.geo.path()
+    .projection(null);
+
+// A position encoding for the key only.
+var x = d3.scale.linear()
+    .domain([0, 5100])
+    .range([0, 480]);
+
+
+svg = d3.select("body").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+var g = svg.append("g")
+    .attr("class", "key")
+    .attr("transform", "translate(440,40)");
+
+g.selectAll("rect")
+    .data(color.range().map(function(d, i) {
+      return {
+        x0: i ? x(color.domain()[i - 1]) : x.range()[0],
+        x1: i < color.domain().length ? x(color.domain()[i]) : x.range()[1],
+        z: d
+      };
+    }))
+  .enter().append("rect")
+    .attr("height", 8)
+    .attr("x", function(d) { return d.x0; })
+    .attr("width", function(d) { return d.x1 - d.x0; })
+    .style("fill", function(d) { return d.z; });
+	
+var add_tracts = function(){};
+	
+d3.json("ky.json", function(error, ky) {
+  if (error) throw error;
+  
+  var tracts = topojson.feature(ky, ky.objects.tracts);
+
+  // Clip tracts to land.
+  svg.append("defs").append("clipPath")
+      .attr("id", "clip-land")
+    .append("path")
+      .datum(topojson.feature(ky, ky.objects.counties))
+      .attr("d", path);
+
+  // Group tracts by color for faster rendering.
+  add_tracts = function(colors){
+  d3.selectAll('.tract').remove();
+  d3.selectAll('.caption').remove();
+  svg.append("g")
+      .attr("class", "tract")
+      .attr("clip-path", "url(#clip-land)")
+      .attr("stroke-opacity", ~d3.select('#tract_button').text().indexOf('Off') ? 0 : 0.3)
+    .selectAll("path")
+      .data(d3.nest()
+        .key(function(d) { return colors(d.properties.population / d.properties.area * 2.58999e6); })
+        .entries(tracts.features.filter(function(d) { return d.properties.area; })))
+    .enter().append("path")
+      .style("fill", function(d) { return d.key; })
+      .attr("d", function(d) { return path({type: "FeatureCollection", features: d.values}); });
+
+var xAxis = d3.svg.axis()
+    .scale(x)
+    .orient("bottom")
+    .tickSize(13)
+    .tickValues(color.domain())
+    .tickFormat(function(d, i) { return d >= 100 ? formatNumber(colors.domain()[i]) : null; });
+	
+g.call(xAxis).append("text")
+    .attr("class", "caption")
+    .attr("y", -6)
+    .text("Population per square mile");
+
+  // Draw county borders.
+  svg.append("path")
+      .datum(topojson.mesh(ky, ky.objects.counties, function(a, b) { return a !== b; }))
+      .attr("class", "county-border")
+      .attr("d", path)
+
+  // Draw state borders.
+  svg.append("path")
+      .datum(topojson.mesh(ky, ky.objects.counties, function(a, b) { return a === b; }))
+      .attr("class", "state-border")
+      .attr("d", path)
+      .attr("stroke-opacity", ~d3.select('#state_button').text().indexOf('Off') ? 0 : 0.3);
+  }
+  
+  add_tracts(color);
+});
+
+d3.select(self.frameElement).style("height", height + "px");
+</script>
+<div style="float:left">
+<span><button id=state_button data-on=false>State Borders: Off</button></span>
+<span><button id=tract_button data-on=false>Census Tract Borders: Off</button></span>
+<span><button id=color_button data-on=false>Higher Contrast Coloring: Off</button></span>
+</div>
+<script>
+d3.select('#state_button').on('click',function(){
+	if(~d3.select('#state_button').text().indexOf('Off')){
+		d3.select('#state_button').text('State Borders: On');
+		d3.selectAll('.state-border').attr('stroke-opacity', 0.3);
+	}else{
+		d3.select('#state_button').text('State Borders: Off');
+		d3.selectAll('.state-border').attr('stroke-opacity', 0);
+	}
+});
+
+d3.select('#tract_button').on('click',function(){
+	if(~d3.select('#tract_button').text().indexOf('Off')){
+		d3.select('#tract_button').text('Census Tract Borders: On');
+		d3.selectAll('.tract').attr('stroke-opacity', 0.3);
+	}else{
+		d3.select('#tract_button').text('Census Tract Borders: Off');
+		d3.selectAll('.tract').attr('stroke-opacity', 0);
+	}
+});
+
+d3.select('#color_button').on('click',function(){
+	if(~d3.select('#color_button').text().indexOf('Off')){
+		d3.select('#color_button').text('Higher Contrast Colors: On');
+		add_tracts(contrast_color);
+	}else{
+		d3.select('#color_button').text('Higher Contrast Colors: Off');
+		add_tracts(color);
+	}
+});
+
+</script>
+<div style="float:right">
+<div>Nathan O'Hara</div>
+<div>Instructor: Suresh Lodha</div>
+<div>CMPS 165: Data Programming for Visualization</div>
+<div>Fall 2016</div>
+</div>
+</body>
+</html>
